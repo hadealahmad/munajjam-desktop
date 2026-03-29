@@ -37,7 +37,7 @@ jobs:
         run: npm --prefix ./ui ci
 
       - name: Build and package
-        run: npm run package
+        run: npm run build && npm run build:ui && npx electron-builder --publish never
 
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'mac'
