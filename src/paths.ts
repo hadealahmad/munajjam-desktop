@@ -58,10 +58,18 @@ export const uiOutDir = () => {
   return path.join(repoRoot(), "munajjam-desktop", "ui", "out");
 };
 
-export const quranCsvPath = () =>
-  fs.existsSync(managedQuranCsvPath())
-    ? managedQuranCsvPath()
-    : path.join(repoRoot(), "Munajjam", "munajjam", "munajjam", "data", "quran_ayat.csv");
+export const quranCsvPath = () => {
+  // 1. Managed runtime (installed via the setup assistant)
+  const managed = managedQuranCsvPath();
+  if (fs.existsSync(managed)) return managed;
+
+  // 2. Bundled resource (packaged app)
+  const bundled = resourcePath("data", "quran_ayat.csv");
+  if (fs.existsSync(bundled)) return bundled;
+
+  // 3. Local development fallback
+  return path.join(repoRoot(), "Munajjam", "munajjam", "munajjam", "data", "quran_ayat.csv");
+};
 
 export const managedQuranCsvPath = () =>
   path.join(managedPackageDir(), "munajjam", "data", "quran_ayat.csv");

@@ -5,6 +5,7 @@ import type { JobsManager } from "./jobs";
 import type { JobRow } from "./ipc-types";
 import { errorResult, ok, toIpcErrorInfo, IpcHandlerError } from "./errors";
 import { approvePath, isPathApproved } from "./approved-paths";
+import { createLogger } from "./logger";
 import { registerDataHandlers } from "./ipc/register-data";
 import { registerDialogHandlers } from "./ipc/register-dialog";
 import { registerEnvHandlers } from "./ipc/register-env";
@@ -19,6 +20,7 @@ interface IpcDeps {
   quranCsvPath: string;
 }
 
+const log = createLogger("ipc");
 const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "m4a", "flac"]);
 const EXPORT_TICKET_TTL_MS = 5 * 60 * 1000;
 const exportTickets = new Map<string, { filePath: string; expiresAt: number }>();
@@ -54,6 +56,7 @@ function handle<T>(
       const data = await handler(event, ...args);
       return ok(data);
     } catch (err) {
+      log.error(`IPC handler error on ${channel}`, { error: String(err) });
       return errorResult(toIpcErrorInfo(err));
     }
   });

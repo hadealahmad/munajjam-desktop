@@ -33,6 +33,12 @@ function normalizeStatus(input: unknown): WorkspaceRecord["status"] {
   if (input === "ready") {
     return "loading";
   }
+  // Transient states that cannot be resumed after a restart:
+  // "error" had a message that is not persisted, so retry by reloading.
+  // "processing" refers to a job that is no longer running.
+  if (input === "error" || input === "processing") {
+    return "loading";
+  }
   return isWorkspaceStatus(input) ? input : "setup";
 }
 
