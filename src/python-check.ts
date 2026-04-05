@@ -82,7 +82,7 @@ export function resolveInstallerInvocation(
  * always has the most recent version without needing to click "Install" again.
  *
  * This runs silently during the environment check.  Failures are logged but
- * never block the check itself — a stale‑but‑working runtime is better than
+ * never block the check itself — a stale-but-working runtime is better than
  * a broken startup.
  */
 export async function updateManagedRuntime(): Promise<void> {
