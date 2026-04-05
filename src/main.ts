@@ -45,8 +45,21 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerAppProtocol();
 
-  const dbPath = path.join(app.getPath("userData"), "munajjam.db");
-  const db = new LocalDb(dbPath);
+  let db: LocalDb;
+  try {
+    const dbPath = path.join(app.getPath("userData"), "munajjam.db");
+    log.info("Opening database", { dbPath });
+    db = new LocalDb(dbPath);
+  } catch (err) {
+    log.error("Failed to open database — native module may not be built for this platform", {
+      error: String(err),
+      platform: process.platform,
+      arch: process.arch,
+      electronVersion: process.versions.electron,
+    });
+    throw err;
+  }
+
   const jobs = new JobsManager(db, broadcastJobUpdate);
 
   registerIpc({

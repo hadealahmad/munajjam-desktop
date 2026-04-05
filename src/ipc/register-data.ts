@@ -1,3 +1,4 @@
+import path from "path";
 import { getSurahText } from "../quran";
 import { IpcHandlerError } from "../errors";
 import {
@@ -73,7 +74,7 @@ function validateAudioRows(rows: unknown): AudioFileRow[] {
   });
 }
 
-export function registerDataHandlers(register: RegisterHandler, { db, quranCsvPath }: RegisterContext) {
+export function registerDataHandlers(register: RegisterHandler, { db, quranCsvPath, approvePath }: RegisterContext) {
   register("data:listReciters", () => db.listReciters());
 
   register("data:createReciter", (_event, payload) => {
@@ -153,12 +154,14 @@ export function registerDataHandlers(register: RegisterHandler, { db, quranCsvPa
 
   register("data:getAudioFile", (_event, payload) => {
     assertRecord(payload, "payload");
-    return (
-      db.getAudioFile(
-        asNonEmptyString(payload.reciterId, "payload.reciterId"),
-        asIntegerInRange(payload.surahId, "payload.surahId", 1, 114),
-      ) ?? null
+    const record = db.getAudioFile(
+      asNonEmptyString(payload.reciterId, "payload.reciterId"),
+      asIntegerInRange(payload.surahId, "payload.surahId", 1, 114),
     );
+    if (record?.audio_path) {
+      approvePath(path.dirname(record.audio_path));
+    }
+    return record ?? null;
   });
 
   register("data:upsertAudioFiles", (_event, rows) => {

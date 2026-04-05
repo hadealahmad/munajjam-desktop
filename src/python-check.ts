@@ -128,7 +128,7 @@ export async function updateManagedRuntime(): Promise<void> {
     execFileSync(pythonBin, ["-m", "pip", "install", "--quiet", `${packageDir}[faster-whisper]`], {
       timeout: 120_000,
       stdio: "pipe",
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
     });
     log.info("pip install completed");
   } catch (err) {
@@ -207,7 +207,7 @@ export async function installRuntime(): Promise<number> {
 
   return new Promise((resolve) => {
     const child = spawn(invocation.command, invocation.args, {
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
     });
 
     child.stdout.on("data", (chunk) => {

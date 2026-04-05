@@ -244,7 +244,7 @@ export async function inspectPythonRuntime(): Promise<PythonRuntimeInfo> {
     });
   }
 
-  const versionMatch = versionResult.stdout.match(/Python\\s+([\\d.]+)/);
+  const versionMatch = versionResult.stdout.match(/Python\s+([\d.]+)/);
 
   const info: PythonRuntimeInfo = {
     ...invocation,

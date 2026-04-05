@@ -59,6 +59,10 @@
       {
         "from": "resources/python",
         "to": "python"
+      },
+      {
+        "from": "resources/data",
+        "to": "data"
       }
     ],
     "extraMetadata": {
