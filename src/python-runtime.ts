@@ -10,6 +10,9 @@ import {
   pythonPackageRoot,
   pythonScriptPath,
 } from "./paths";
+import { createLogger } from "./logger";
+
+const log = createLogger("python-runtime");
 
 export interface PythonInvocation {
   command: string;
@@ -191,6 +194,7 @@ async function probeMunajjamImport(
 }
 
 export async function inspectPythonRuntime(): Promise<PythonRuntimeInfo> {
+  log.info("Inspecting Python runtime...");
   const invocation = await resolvePythonInvocation();
   const localPackageAvailable = hasLocalPackage();
   const localPackagePath = getLocalPackagePath();
@@ -204,6 +208,7 @@ export async function inspectPythonRuntime(): Promise<PythonRuntimeInfo> {
   const ffmpegAvailable = !!ffmpegPath;
 
   if (!invocation) {
+    log.warn("No Python invocation found");
     return {
       command: "",
       prefix: [],
@@ -241,7 +246,7 @@ export async function inspectPythonRuntime(): Promise<PythonRuntimeInfo> {
 
   const versionMatch = versionResult.stdout.match(/Python\\s+([\\d.]+)/);
 
-  return {
+  const info: PythonRuntimeInfo = {
     ...invocation,
     pythonVersion: versionResult.exitCode === 0 ? versionMatch?.[1] ?? versionResult.stdout : null,
     pythonPath: pythonPathResult.exitCode === 0 ? pythonPathResult.stdout : null,
@@ -258,6 +263,16 @@ export async function inspectPythonRuntime(): Promise<PythonRuntimeInfo> {
     localPackagePath,
     localPythonPath,
   };
+
+  log.info("Python runtime inspection complete", {
+    command: info.command,
+    pythonVersion: info.pythonVersion,
+    ffmpegAvailable: info.ffmpegAvailable,
+    munajjamAvailable: info.munajjamAvailable,
+    munajjamVersion: info.munajjamVersion,
+  });
+
+  return info;
 }
 
 async function canImportModule(invocation: PythonInvocation, moduleName: string): Promise<boolean> {

@@ -7,7 +7,10 @@ import { scanAudioFiles } from "./audio-files";
 import { parseJobEvent } from "./job-events";
 import { generatePeaks } from "./peaks";
 import { inspectPythonRuntime, resolveAlignmentEntrypoint } from "./python-runtime";
+import { createLogger } from "./logger";
 import type { AlignmentRow, JobRow, JobConfig } from "./ipc-types";
+
+const log = createLogger("jobs");
 
 export type { JobConfig };
 export { parseJobEvent, scanAudioFiles };
@@ -41,6 +44,7 @@ export class JobsManager {
   }
 
   startJob(config: JobConfig): JobRow {
+    log.info("Starting job", { reciterId: config.reciterId, audioDir: config.audioDir });
     const job = this.db.createJob({
       status: "queued",
       reciter_id: config.reciterId,
@@ -86,6 +90,7 @@ export class JobsManager {
     const next = this.queue.shift();
     if (!next) return;
     this.executeJob(next).catch((error) => {
+      log.error("Job execution failed", { jobId: next.jobId, error: String(error) });
       const job = this.db.updateJob(next.jobId, {
         status: "failed",
         finished_at: new Date().toISOString(),
@@ -115,6 +120,7 @@ export class JobsManager {
     );
 
     if (audioFiles.length === 0) {
+      log.warn("No audio files found for job", { jobId, audioDir: config.audioDir });
       const job = this.db.updateJob(jobId, {
         status: "failed",
         total_surahs: 0,
@@ -141,6 +147,7 @@ export class JobsManager {
 
     const runtime = await inspectPythonRuntime();
     if (!runtime.command) {
+      log.error("Python runtime not found for job", { jobId });
       const failedJob = this.db.updateJob(jobId, {
         status: "failed",
         finished_at: new Date().toISOString(),
@@ -153,6 +160,7 @@ export class JobsManager {
 
     const entrypoint = await resolveAlignmentEntrypoint(runtime);
     if (!entrypoint) {
+      log.error("Alignment entrypoint unavailable for job", { jobId });
       const failedJob = this.db.updateJob(jobId, {
         status: "failed",
         finished_at: new Date().toISOString(),
@@ -175,6 +183,13 @@ export class JobsManager {
       "--surah-ids",
       surahIds.join(","),
     ];
+
+    log.info("Spawning alignment process", {
+      jobId,
+      command: runtime.command,
+      entrypoint: entrypoint.target,
+      surahCount: surahIds.length,
+    });
 
     const child = spawn(runtime.command, args, {
       env: {
@@ -319,8 +334,11 @@ export class JobsManager {
       });
     }
 
+    const finalStatus = wasCanceled ? "canceled" : timedOut ? "failed" : exitCode === 0 ? "completed" : "failed";
+    log.info("Job finished", { jobId, status: finalStatus, exitCode, timedOut, wasCanceled });
+
     job = this.db.updateJob(jobId, {
-      status: wasCanceled ? "canceled" : timedOut ? "failed" : exitCode === 0 ? "completed" : "failed",
+      status: finalStatus,
       finished_at: new Date().toISOString(),
     });
     this.emit(job);

@@ -6,6 +6,9 @@ import { registerIpc, broadcastJobUpdate } from "./ipc";
 import { quranCsvPath } from "./paths";
 import { registerAppProtocol, registerMediaProtocol } from "./protocols";
 import { createWindow } from "./window";
+import { createLogger, closeLogger } from "./logger";
+
+const log = createLogger("main");
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -37,6 +40,8 @@ if (!singleInstanceLock) {
 }
 
 app.whenReady().then(async () => {
+  log.info("App ready", { platform: process.platform, version: app.getVersion(), userData: app.getPath("userData") });
+
   registerMediaProtocol();
   registerAppProtocol();
 
@@ -51,6 +56,7 @@ app.whenReady().then(async () => {
   });
 
   const startUrl = process.env.MUNAJJAM_DEV_URL || "munajjam-app://app/en";
+  log.info("Loading URL", { startUrl });
 
   await createWindow(startUrl);
 
@@ -72,4 +78,9 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("will-quit", () => {
+  log.info("App quitting");
+  closeLogger();
 });
