@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle } from "lucide-react";
 
 import { WorkspaceProvider, useWorkspace } from "@/lib/workspace-context";
 import { RecitersProvider } from "@/lib/reciters-context";
@@ -164,10 +165,8 @@ function DesktopMainContent({ locale }: { locale: string }) {
             className="card-glass p-8 text-center"
           >
             <div className="flex flex-col items-center gap-4">
-              <svg className="w-12 h-12 text-[var(--error)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-white/70">{activeWorkspace.error}</p>
+              <AlertCircle className="w-12 h-12 text-red-400" />
+              <p className="text-white/70">{activeWorkspace.error || "Something went wrong. Please try again."}</p>
             </div>
           </motion.div>
         )}

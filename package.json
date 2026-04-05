@@ -34,6 +34,14 @@
       "icon": "assets/icon.icns",
       "category": "public.app-category.utilities"
     },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "files": [
       "dist/*.js",
       "dist/*.js.map",

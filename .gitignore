@@ -13,3 +13,4 @@ ui/coverage/
 *.log
 ui/.cursor/
 ui/.claude/
+__pycache__/
