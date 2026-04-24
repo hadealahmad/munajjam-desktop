@@ -78,7 +78,20 @@ def write_output(output_dir: Path, surah_id: int, results: list) -> None:
     }
 
     target = output_dir / f"{surah_id:03d}.json"
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(target)  # atomic on POSIX; best-effort atomic on Windows (same drive)
+
+
+def _is_complete_output(path: Path) -> bool:
+    """Return True only if path exists and contains a valid, non-empty alignment."""
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return isinstance(data.get("ayahs"), list) and len(data["ayahs"]) > 0
+    except Exception:
+        return False
 
 
 def main() -> int:
@@ -116,6 +129,11 @@ def main() -> int:
                 total=total,
                 message=f"Processing surah {surah_id} ({index}/{total})",
             )
+
+            target = output_dir / f"{surah_id:03d}.json"
+            if _is_complete_output(target):
+                emit("surah_skipped", surah_id=surah_id, message=f"Output already exists for surah {surah_id}")
+                continue
 
             started = time.perf_counter()
             try:

@@ -1,7 +1,7 @@
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import fs from "fs";
 import path from "path";
-import { app } from "electron";
+import { app, powerMonitor } from "electron";
 import { LocalDb } from "./db";
 import { scanAudioFiles } from "./audio-files";
 import { parseJobEvent } from "./job-events";
@@ -37,6 +37,11 @@ export class JobsManager {
   constructor(db: LocalDb, emit: JobUpdateListener) {
     this.db = db;
     this.emit = emit;
+
+    const recovered = db.recoverStaleJobs();
+    if (recovered > 0) {
+      log.warn("Recovered stale jobs from previous session", { count: recovered });
+    }
   }
 
   listJobs() {
@@ -261,15 +266,41 @@ export class JobsManager {
     let stderrBuffer = "";
     const MAX_BUFFER = 1024 * 1024; // 1MB cap to prevent unbounded growth
     let timedOut = false;
-    const timeout = setTimeout(() => {
+
+    // Sleep-aware timeout: wall-clock time while the machine is asleep does not
+    // count toward the job timeout, so a job is not incorrectly killed after the
+    // lid is reopened.
+    let remainingMs = JOB_TIMEOUT_MS;
+    let suspendedAt: number | null = null;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    const killChild = () => {
       timedOut = true;
       child.kill("SIGTERM");
-      setTimeout(() => {
-        if (!child.killed) {
-          child.kill("SIGKILL");
-        }
-      }, 5_000);
-    }, JOB_TIMEOUT_MS);
+      setTimeout(() => { if (!child.killed) child.kill("SIGKILL"); }, 5_000);
+    };
+
+    const armTimeout = (ms: number) => {
+      timeoutHandle = setTimeout(killChild, ms);
+    };
+
+    const onSuspend = () => {
+      if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
+      suspendedAt = Date.now();
+    };
+
+    const onResume = () => {
+      if (suspendedAt !== null) {
+        remainingMs -= Date.now() - suspendedAt;
+        suspendedAt = null;
+      }
+      if (remainingMs > 0) armTimeout(remainingMs);
+      else killChild();
+    };
+
+    powerMonitor.on("suspend", onSuspend);
+    powerMonitor.on("resume", onResume);
+    armTimeout(remainingMs);
 
     child.on("error", (err) => {
       handleLine(JSON.stringify({ type: "error", message: `Failed to start alignment process: ${String(err)}` }));
@@ -306,7 +337,9 @@ export class JobsManager {
     const exitCode: number = await new Promise((resolve) => {
       child.on("close", (code) => resolve(code ?? 0));
     });
-    clearTimeout(timeout);
+    powerMonitor.off("suspend", onSuspend);
+    powerMonitor.off("resume", onResume);
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     if (stdoutBuffer.trim().length > 0) {
       handleLine(stdoutBuffer.trim());
     }

@@ -2,18 +2,34 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$Root,
-  [string]$RepoUrl = "https://github.com/Itqan-community/Munajjam.git",
+  [string]$RepoUrl = "https://github.com/Itqan-community/Munajjam",
   [string]$RepoRef = "main",
   [string]$PythonVersion = "3.12"
 )
 
 $ErrorActionPreference = "Stop"
 
-function Require-Command {
-  param([string]$Name)
-  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-    throw "$Name is required but was not found."
-  }
+function Sync-MunajjamRepo {
+  param([string]$RepoDir, [string]$RepoUrl, [string]$RepoRef)
+
+  $ZipUrl = "$RepoUrl/archive/refs/heads/$RepoRef.zip"
+  $TempZip = Join-Path $env:TEMP "munajjam-repo.zip"
+  $TempExtract = Join-Path $env:TEMP "munajjam-extract"
+
+  Write-Host "Downloading Munajjam repository ($RepoRef)..."
+  Invoke-WebRequest -Uri $ZipUrl -OutFile $TempZip -UseBasicParsing
+
+  if (Test-Path $TempExtract) { Remove-Item $TempExtract -Recurse -Force }
+  Expand-Archive -Path $TempZip -DestinationPath $TempExtract -Force
+  Remove-Item $TempZip -Force
+
+  $ExtractedFolder = Get-ChildItem $TempExtract -Directory | Select-Object -First 1
+  if (-not $ExtractedFolder) { throw "Failed to extract Munajjam repository archive." }
+
+  if (Test-Path $RepoDir) { Remove-Item $RepoDir -Recurse -Force }
+  Move-Item $ExtractedFolder.FullName $RepoDir
+
+  Remove-Item $TempExtract -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -23,11 +39,12 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "Installing required packages with winget..."
-winget install --exact --id Git.Git --accept-package-agreements --accept-source-agreements
 winget install --exact --id Gyan.FFmpeg --accept-package-agreements --accept-source-agreements
 winget install --exact --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
 
-Require-Command git
+# Refresh PATH in the current session so newly installed tools are visible immediately.
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+            [System.Environment]::GetEnvironmentVariable("Path", "User")
 
 $null = New-Item -ItemType Directory -Force -Path $Root
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $Root "logs")
@@ -35,18 +52,10 @@ $null = New-Item -ItemType Directory -Force -Path (Join-Path $Root "logs")
 $RepoDir = Join-Path $Root "repo"
 $PackageDir = Join-Path $RepoDir "munajjam"
 $VenvDir = Join-Path $Root "venv"
-$VenvPython = Join-Path $VenvDir "Scripts\\python.exe"
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $FfmpegMarker = Join-Path $Root "ffmpeg-path.txt"
 
-if (-not (Test-Path (Join-Path $RepoDir ".git"))) {
-  Write-Host "Cloning Munajjam repository..."
-  git clone --depth 1 --branch $RepoRef $RepoUrl $RepoDir
-} else {
-  Write-Host "Updating managed Munajjam repository..."
-  git -C $RepoDir fetch origin $RepoRef --depth 1
-  git -C $RepoDir checkout $RepoRef
-  git -C $RepoDir pull --ff-only origin $RepoRef
-}
+Sync-MunajjamRepo -RepoDir $RepoDir -RepoUrl $RepoUrl -RepoRef $RepoRef
 
 if (-not (Test-Path $VenvDir)) {
   Write-Host "Creating Python virtual environment..."
@@ -66,7 +75,7 @@ if ($FfmpegCommand) {
 }
 
 if (-not $FfmpegBin) {
-  $WingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\\WinGet\\Packages"
+  $WingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
   if (Test-Path $WingetPackages) {
     $PackageDirEntry = Get-ChildItem -Path $WingetPackages -Directory -Filter "Gyan.FFmpeg_*" -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime -Descending |

@@ -403,6 +403,13 @@ export class LocalDb {
     tx(rows);
   }
 
+  recoverStaleJobs(): number {
+    const result = this.db
+      .prepare(`UPDATE jobs SET status = 'failed', finished_at = ?, updated_at = ? WHERE status = 'running'`)
+      .run(now(), now());
+    return result.changes;
+  }
+
   listJobs(): JobRow[] {
     const stmt = this.db.prepare("SELECT * FROM jobs ORDER BY created_at DESC");
     const rows = stmt.all() as Record<string, unknown>[];
