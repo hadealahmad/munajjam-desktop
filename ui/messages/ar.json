@@ -221,7 +221,7 @@
       "pipLabel": "pip",
       "munajjamLabel": "munajjam",
       "installRuntimeTitle": "تثبيت البيئة المُدارة",
-      "installRuntimeDesc": "سيؤدي هذا إلى تثبيت Python 3.12 وGit وFFmpeg ونسخ Munajjam وإنشاء البيئة المُدارة باستخدام {packageManager}.",
+      "installRuntimeDesc": "سيؤدي هذا إلى تثبيت Python 3.12 وFFmpeg وتنزيل Munajjam وإنشاء البيئة المُدارة باستخدام {packageManager}.",
       "installButton": "تثبيت البيئة",
       "installing": "جاري التثبيت...",
       "terminalTitle": "مخرجات الطرفية",

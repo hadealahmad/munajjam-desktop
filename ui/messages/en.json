@@ -221,7 +221,7 @@
       "pipLabel": "pip",
       "munajjamLabel": "munajjam",
       "installRuntimeTitle": "Install Managed Runtime",
-      "installRuntimeDesc": "This installs Python 3.12, Git, FFmpeg, clones Munajjam, and creates the managed runtime using {packageManager}.",
+      "installRuntimeDesc": "This installs Python 3.12 and FFmpeg, downloads Munajjam, and creates the managed runtime using {packageManager}.",
       "installButton": "Install runtime",
       "installing": "Installing...",
       "terminalTitle": "Terminal Output",
