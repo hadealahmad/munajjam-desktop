@@ -5,7 +5,7 @@ import type {
   AudioFileRow,
   JobConfig,
   JobRow,
-  EnvInstallProgress,
+  RuntimeStatus,
   IpcErrorInfo,
   IpcResult,
 } from "./ipc-types";
@@ -97,13 +97,15 @@ const bridge: MunajjamBridge = {
     generate: (audioPath: string, reciterId: string, surahId: number) =>
       invoke("peaks:generate", { audioPath, reciterId, surahId }),
   },
-  env: {
-    check: () => invoke("env:check"),
-    installRuntime: () => invoke("env:installRuntime"),
-    subscribe: (callback: (progress: EnvInstallProgress) => void) => {
-      const handler = (_event: IpcRendererEvent, progress: EnvInstallProgress) => callback(progress);
-      ipcRenderer.on("env:installProgress", handler);
-      return () => ipcRenderer.removeListener("env:installProgress", handler);
+  runtime: {
+    check: () => invoke("runtime:check"),
+    setup: () => invoke("runtime:setup"),
+    getStatus: () => invoke("runtime:getStatus"),
+    doctor: () => invoke("runtime:doctor"),
+    subscribe: (callback: (status: RuntimeStatus) => void) => {
+      const handler = (_event: IpcRendererEvent, status: RuntimeStatus) => callback(status);
+      ipcRenderer.on("runtime:status", handler);
+      return () => ipcRenderer.removeListener("runtime:status", handler);
     },
   },
 };

@@ -145,7 +145,7 @@ def main() -> int:
                     total=total,
                     percent=((index - 1) / total) * 100,
                 )
-                segments = transcriber.transcribe(str(audio_path))
+                segments = transcriber.transcribe(str(audio_path), surah_id=surah_id)
                 ayahs = load_surah_ayahs(surah_id)
                 emit(
                     "progress",

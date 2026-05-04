@@ -62,6 +62,8 @@ function handle<T>(
   });
 }
 
+import { registerRuntimeHandlers } from "./ipc/register-runtime";
+
 export function registerIpc({ db, jobs, quranCsvPath }: IpcDeps) {
   const context: RegisterContext = {
     db,
@@ -79,7 +81,7 @@ export function registerIpc({ db, jobs, quranCsvPath }: IpcDeps) {
   registerDialogHandlers(handle, context);
   registerFileHandlers(handle, context);
   registerPeaksHandlers(handle, context);
-  registerEnvHandlers(handle);
+  registerRuntimeHandlers(handle);
 }
 
 export function broadcastJobUpdate(job: JobRow) {

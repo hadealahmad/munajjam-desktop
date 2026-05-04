@@ -148,29 +148,28 @@ export interface JobConfig {
   surahIds?: number[];
 }
 
-export interface EnvCheckResult {
-  python: boolean;
-  pythonVersion: string | null;
-  pythonPath: string | null;
-  pip: boolean;
-  ffmpeg: boolean;
-  ffmpegPath: string | null;
-  munajjam: boolean;
-  munajjamVersion: string | null;
-  platform: string;
-  platformSupported: boolean;
-  packageManagerAvailable: boolean;
-  packageManagerName: string | null;
-  managedInstallPath: string | null;
-  localPackageAvailable: boolean;
-  localPackagePath: string | null;
+export type RuntimeStage = 
+  | "idle"
+  | "checking"
+  | "downloading_python"
+  | "extracting_python"
+  | "downloading_ffmpeg"
+  | "extracting_ffmpeg"
+  | "creating_venv"
+  | "downloading_repo"
+  | "extracting_repo"
+  | "installing_requirements"
+  | "verifying"
+  | "ready"
+  | "error";
+
+export interface RuntimeStatus {
+  stage: RuntimeStage;
+  progress: number;
+  message: string;
+  error?: string;
 }
 
-export interface EnvInstallProgress {
-  type: "stdout" | "stderr" | "exit";
-  data: string;
-  exitCode?: number;
-}
 
 export interface IpcErrorInfo {
   code: string;
@@ -235,9 +234,11 @@ export interface MunajjamBridge {
     get: (reciterId: string, surahId: number) => Promise<{ peaks: number[][]; duration?: number; sampleRate?: number } | null>;
     generate: (audioPath: string, reciterId: string, surahId: number) => Promise<{ peaks: number[][]; duration?: number; sampleRate?: number }>;
   };
-  env: {
-    check: () => Promise<EnvCheckResult>;
-    installRuntime: () => Promise<{ success: boolean }>;
-    subscribe: (callback: (progress: EnvInstallProgress) => void) => () => void;
+  runtime: {
+    check: () => Promise<boolean>;
+    setup: () => Promise<void>;
+    getStatus: () => Promise<RuntimeStatus>;
+    doctor: () => Promise<any>;
+    subscribe: (callback: (status: RuntimeStatus) => void) => () => void;
   };
 }

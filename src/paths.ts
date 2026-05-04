@@ -19,8 +19,14 @@ const resourcePath = (...segments: string[]) => {
   return path.join(desktopRoot(), "resources", ...segments);
 };
 
+let customRuntimeRoot: string | null = null;
+
+export const setManagedRuntimeRoot = (root: string) => {
+  customRuntimeRoot = root;
+};
+
 export const managedRuntimeRoot = () =>
-  path.join(app.getPath("userData"), "runtime", "munajjam");
+  customRuntimeRoot || path.join(app.getPath("userData"), "runtime", "munajjam");
 
 export const managedLogsDir = () =>
   path.join(managedRuntimeRoot(), "logs");

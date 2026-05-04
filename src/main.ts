@@ -39,7 +39,10 @@ if (!singleInstanceLock) {
   app.quit();
 }
 
+import { loadSettings } from "./settings";
+
 app.whenReady().then(async () => {
+  loadSettings();
   log.info("App ready", { platform: process.platform, version: app.getVersion(), userData: app.getPath("userData") });
 
   registerMediaProtocol();

@@ -38,6 +38,17 @@
       "icon": "assets/icon.png",
       "target": "nsis"
     },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility",
+      "maintainer": "Munajjam",
+      "desktop": {
+        "Name": "Munajjam",
+        "Comment": "Automated Quran Recitation Synchronization",
+        "Type": "Application",
+        "Terminal": "false"
+      }
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true

@@ -4,166 +4,90 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { AlertTriangle, Check, ChevronRight, Loader2, RefreshCw, Terminal, X } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCw, Stethoscope } from "lucide-react";
 import { useEnv } from "@/lib/env-context";
 import { getElectronBridge, isDesktop } from "@/lib/electron";
-import type { EnvCheckResult, EnvInstallProgress } from "@/types/munajjam";
-import { getSetupAssistantState } from "./setup-assistant-state";
 
-function CheckItem({
-  label,
-  status,
-  detail,
-}: {
-  label: string;
-  status: boolean | null;
-  detail?: string | null;
-}) {
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <div className="w-5 h-5 flex items-center justify-center">
-        {status === null ? (
-          <Loader2 className="w-4 h-4 text-white/40 animate-spin" />
-        ) : status ? (
-          <Check className="w-4 h-4 text-green-400" />
-        ) : (
-          <X className="w-4 h-4 text-red-400" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className={`text-sm ${status === false ? "text-red-400" : "text-white/70"}`}>{label}</div>
-        {detail ? <div className="text-[11px] text-white/35 truncate">{detail}</div> : null}
-      </div>
-    </div>
-  );
-}
 
-function InfoCard({
-  title,
-  description,
-  tone = "default",
-  footer,
-}: {
-  title: string;
-  description: string;
-  tone?: "default" | "warning";
-  footer?: ReactNode;
-}) {
-  const toneClasses =
-    tone === "warning"
-      ? "bg-amber-500/10 border-amber-500/30 text-amber-100"
-      : "bg-white/5 border-white/10 text-white/80";
-
-  return (
-    <div className={`mt-4 p-4 rounded-xl border ${toneClasses}`}>
-      <div className="flex items-start gap-3">
-        <AlertTriangle className={`w-4 h-4 mt-0.5 ${tone === "warning" ? "text-amber-300" : "text-white/50"}`} />
-        <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-medium mb-2">{title}</h4>
-          <p className={`text-xs ${tone === "warning" ? "text-amber-100/80" : "text-white/50"}`}>{description}</p>
-          {footer ? <div className="mt-3">{footer}</div> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function InstallCard({
-  result,
   onInstallComplete,
 }: {
-  result: EnvCheckResult;
   onInstallComplete: () => void;
 }) {
   const t = useTranslations("qa.setup");
+  const { runtimeStatus, setup } = useEnv();
   const [installing, setInstalling] = useState(false);
-  const [output, setOutput] = useState<string[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
-  }, [output]);
+  const stage = runtimeStatus?.stage || "idle";
+  const progress = runtimeStatus?.progress || 0;
+  const message = runtimeStatus?.message || "";
 
   useEffect(() => {
-    if (!isDesktop()) return;
-    const bridge = getElectronBridge();
-    const unsubscribe = bridge.env.subscribe((progress: EnvInstallProgress) => {
-      if (progress.type === "stdout" || progress.type === "stderr") {
-        setOutput((prev) => [...prev, progress.data]);
-      }
-      if (progress.type === "exit") {
-        setInstalling(false);
-        if (progress.exitCode === 0) {
-          onInstallComplete();
-        }
-      }
-    });
-    return unsubscribe;
-  }, [onInstallComplete]);
-
-  const handleInstall = async () => {
-    if (!isDesktop()) return;
-    setInstalling(true);
-    setOutput([]);
-    try {
-      await getElectronBridge().env.installRuntime();
-    } catch {
+    if (stage === "ready") {
+      setInstalling(false);
+      onInstallComplete();
+    } else if (stage === "error") {
       setInstalling(false);
     }
+  }, [stage, onInstallComplete]);
+
+  const handleInstall = async () => {
+    setInstalling(true);
+    await setup();
   };
 
   return (
     <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
       <h4 className="text-sm font-medium text-white/80 mb-3">{t("installRuntimeTitle")}</h4>
       <p className="text-xs text-white/50 mb-4">
-        {t("installRuntimeDesc", {
-          packageManager: result.packageManagerName ?? t("packageManagerUnknown"),
-        })}
+        We will download and set up Python, FFmpeg, and the Munajjam engine in your workspace.
       </p>
 
-      {result.managedInstallPath ? (
-        <div className="mb-4 rounded-lg bg-black/30 px-3 py-2 text-[11px] text-white/45 font-mono break-all">
-          <span className="text-white/60">{t("managedInstallPathLabel")}:</span> {result.managedInstallPath}
-        </div>
-      ) : null}
-
-      {!result.packageManagerAvailable ? (
-        <InfoCard
-          tone="warning"
-          title={t("packageManagerMissingTitle")}
-          description={t("packageManagerMissingDesc", {
-            packageManager: result.packageManagerName ?? t("packageManagerUnknown"),
-          })}
-        />
-      ) : null}
-
-      <button
-        onClick={handleInstall}
-        disabled={installing || !result.packageManagerAvailable}
-        className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg text-sm text-white/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {installing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-        {installing ? t("installing") : t("installButton")}
-      </button>
-
-      {output.length > 0 ? (
-        <div className="mt-4">
-          <div className="flex items-center gap-2 text-xs text-white/40 mb-2">
-            <Terminal className="w-3.5 h-3.5" />
-            {t("terminalTitle")}
+      {installing || stage !== "idle" ? (
+        <div className="space-y-4">
+          <div className="flex justify-between text-xs text-white/60 mb-1">
+            <span className="capitalize">{stage.replace(/_/g, " ")}</span>
+            <span>{progress}%</span>
           </div>
-          <div
-            ref={terminalRef}
-            className="bg-black/60 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs text-white/60 whitespace-pre-wrap"
-          >
-            {output.map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
+          <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+            <motion.div
+              className="bg-blue-500 h-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.3 }}
+            />
           </div>
+          <div className="text-[11px] text-white/40 italic truncate">
+            {message}
+          </div>
+          
+          {stage === "error" && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+              {runtimeStatus?.error || "An unexpected error occurred during setup."}
+            </div>
+          )}
         </div>
-      ) : null}
+      ) : (
+        <button
+          onClick={handleInstall}
+          disabled={installing}
+          className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg text-sm text-white/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ChevronRight className="w-4 h-4" />
+          {t("installButton")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DoctorReport({ report }: { report: any }) {
+  return (
+    <div className="mt-6 p-4 bg-black/40 rounded-xl border border-white/5 font-mono text-[11px] text-white/60 overflow-x-auto">
+      <div className="mb-2 text-white/40 uppercase tracking-wider font-bold text-[10px]">System Diagnostics</div>
+      <pre>{JSON.stringify(report, null, 2)}</pre>
     </div>
   );
 }
@@ -173,20 +97,23 @@ export default function SetupAssistantView() {
   const params = useParams();
   const locale = (params.locale as string) || "en";
   const isRTL = locale === "ar";
-  const { status, result, recheck } = useEnv();
+  const { status, runtimeStatus, recheck, doctor } = useEnv();
+  const [doctorReport, setDoctorReport] = useState<any>(null);
+  const [isRunningDoctor, setIsRunningDoctor] = useState(false);
 
   const isLoading = status === "loading";
-  const pythonOk = isLoading ? null : result?.python ?? false;
-  const ffmpegOk = isLoading ? null : result?.ffmpeg ?? false;
-  const munajjamOk = isLoading ? null : result?.munajjam ?? false;
-  const setupState = getSetupAssistantState(result);
-
-  const pythonLabel = result?.pythonVersion ? `Python (${result.pythonVersion})` : t("pythonLabel");
-  const munajjamLabel = result?.munajjamVersion ? `munajjam (${result.munajjamVersion})` : t("munajjamLabel");
+  const isReady = status === "ready";
 
   const handleInstallComplete = useCallback(() => {
     setTimeout(() => recheck(), 500);
   }, [recheck]);
+
+  const handleRunDoctor = async () => {
+    setIsRunningDoctor(true);
+    const report = await doctor();
+    setDoctorReport(report);
+    setIsRunningDoctor(false);
+  };
 
   return (
     <motion.div
@@ -202,23 +129,11 @@ export default function SetupAssistantView() {
           <p className="text-sm text-white/50">{t("description")}</p>
         </div>
 
-        <div className="p-4 bg-white/5 rounded-xl border border-white/10 mb-2">
-          <CheckItem label={pythonLabel} status={pythonOk} detail={result?.pythonPath} />
-          <CheckItem label={t("ffmpegLabel")} status={ffmpegOk} detail={result?.ffmpegPath} />
-          <CheckItem label={munajjamLabel} status={munajjamOk} detail={result?.managedInstallPath} />
-        </div>
+        {!isReady && (
+          <InstallCard onInstallComplete={handleInstallComplete} />
+        )}
 
-        {setupState.showUnsupported ? (
-          <InfoCard
-            tone="warning"
-            title={t("unsupportedPlatformTitle")}
-            description={t("unsupportedPlatformDesc")}
-          />
-        ) : null}
-
-        {result && setupState.showInstaller ? (
-          <InstallCard result={result} onInstallComplete={handleInstallComplete} />
-        ) : null}
+        {doctorReport && <DoctorReport report={doctorReport} />}
 
         <div className={`flex items-center gap-3 mt-6 ${isRTL ? "flex-row-reverse" : ""}`}>
           <button
@@ -230,7 +145,16 @@ export default function SetupAssistantView() {
             {t("recheck")}
           </button>
 
-          {setupState.isReady ? (
+          <button
+            onClick={handleRunDoctor}
+            disabled={isRunningDoctor}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white/60 hover:text-white/80 transition-colors disabled:opacity-50"
+          >
+            <Stethoscope className={`w-4 h-4 ${isRunningDoctor ? "animate-pulse" : ""}`} />
+            Doctor
+          </button>
+
+          {isReady ? (
             <button
               onClick={recheck}
               className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg text-sm text-white/80 transition-colors"

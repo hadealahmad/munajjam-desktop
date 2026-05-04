@@ -1,8 +1,8 @@
 import type {
   MunajjamBridge,
   AudioFileScanResult,
-  EnvCheckResult,
-  EnvInstallProgress,
+  RuntimeStatus,
+  RuntimeStage,
   AlignmentRow,
   AudioFileRow,
   ReciterRow,
@@ -16,8 +16,8 @@ import type {
 export type {
   MunajjamBridge,
   AudioFileScanResult,
-  EnvCheckResult,
-  EnvInstallProgress,
+  RuntimeStatus,
+  RuntimeStage,
   AlignmentRow,
   AudioFileRow,
   ReciterRow,

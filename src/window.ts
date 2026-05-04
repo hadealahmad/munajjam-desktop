@@ -24,7 +24,7 @@ export const createWindow = async (startUrl: string) => {
     show: false,
     titleBarStyle: isMac ? "hiddenInset" : "default",
     trafficLightPosition: isMac ? { x: 14, y: 14 } : undefined,
-    transparent: true,
+    transparent: isMac || isWin,
     vibrancy: isMac ? "under-window" : undefined,
     visualEffectState: isMac ? "active" : undefined,
     titleBarOverlay: false,
@@ -37,7 +37,7 @@ export const createWindow = async (startUrl: string) => {
       allowRunningInsecureContent: false,
       devTools: true,
     },
-    backgroundColor: "#00000000",
+    backgroundColor: isMac || isWin ? "#00000000" : "#121212",
   };
 
   if (isWin) {
