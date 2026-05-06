@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
+import { app } from "electron";
 import {
   localPackageDir,
   localPyprojectPath,
@@ -48,6 +49,10 @@ export interface AlignmentEntrypoint {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+function allowsRuntimeOverride(): boolean {
+  return app.isPackaged !== true;
+}
 
 export function isInstallerPlatformSupported(platform: NodeJS.Platform): boolean {
   return platform === "darwin" || platform === "win32";
@@ -121,7 +126,7 @@ function runQuiet(
 }
 
 async function resolvePythonInvocation(): Promise<PythonInvocation | null> {
-  const override = process.env.MUNAJJAM_PYTHON;
+  const override = allowsRuntimeOverride() ? process.env.MUNAJJAM_PYTHON : undefined;
   if (override) {
     const result = await runQuiet(override, ["--version"]);
     if (result.exitCode === 0) {
@@ -288,7 +293,7 @@ async function canImportModule(invocation: PythonInvocation, moduleName: string)
 export async function resolveAlignmentEntrypoint(
   invocation: PythonInvocation,
 ): Promise<AlignmentEntrypoint | null> {
-  const overrideScript = process.env.MUNAJJAM_ALIGN_SCRIPT;
+  const overrideScript = allowsRuntimeOverride() ? process.env.MUNAJJAM_ALIGN_SCRIPT : undefined;
   if (overrideScript && fs.existsSync(overrideScript)) {
     return { kind: "script", target: overrideScript };
   }
@@ -299,7 +304,7 @@ export async function resolveAlignmentEntrypoint(
   }
 
   const moduleCandidates = [
-    process.env.MUNAJJAM_ALIGN_MODULE,
+    allowsRuntimeOverride() ? process.env.MUNAJJAM_ALIGN_MODULE : undefined,
     "munajjam.scripts.align_batch_cli",
     "munajjam.align_batch_cli",
   ].filter((value): value is string => !!value && value.trim().length > 0);
