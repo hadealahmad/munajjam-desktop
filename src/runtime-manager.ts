@@ -147,13 +147,31 @@ export class RuntimeManager {
 
   private async createVenv(pythonBin: string, venvDir: string) {
     log.info("Creating virtual environment", { pythonBin, venvDir });
+    
+    const isWin = process.platform === "win32";
+    const args = ["-m", "venv"];
+    if (isWin) args.push("--copies");
+    args.push(venvDir);
+
     return new Promise<void>((resolve, reject) => {
-      const child = spawn(pythonBin, ["-m", "venv", venvDir]);
+      let stderr = "";
+      const child = spawn(pythonBin, args, {
+        cwd: path.dirname(pythonBin)
+      });
+
+      child.stderr.on("data", (data) => {
+        const msg = data.toString();
+        stderr += msg;
+        log.warn("venv stderr", msg);
+      });
+
       child.on("close", (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`Venv creation failed with code ${code}`));
+        else reject(new Error(`Venv creation failed with code ${code}. Error: ${stderr}`));
       });
-      child.on("error", reject);
+      child.on("error", (err) => {
+        reject(new Error(`Failed to start venv creation: ${err.message}. ${stderr}`));
+      });
     });
   }
 
@@ -167,6 +185,7 @@ export class RuntimeManager {
     const args = ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel", `${repoDir}[${extra}]`];
     
     return new Promise<void>((resolve, reject) => {
+      let stderr = "";
       const child = spawn(venvPython, args, {
         env: { ...process.env, PYTHONUNBUFFERED: "1" }
       });
@@ -179,6 +198,7 @@ export class RuntimeManager {
       child.stderr.on("data", (data) => {
         const line = data.toString().trim();
         if (line) {
+          stderr += line + "\n";
           log.warn("pip stderr", line);
           this.updateStatus({ message: line });
         }
@@ -186,9 +206,11 @@ export class RuntimeManager {
 
       child.on("close", (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`Pip install failed with code ${code}`));
+        else reject(new Error(`Pip install failed with code ${code}. Error: ${stderr}`));
       });
-      child.on("error", reject);
+      child.on("error", (err) => {
+        reject(new Error(`Failed to start pip install: ${err.message}. ${stderr}`));
+      });
     });
   }
 
@@ -210,7 +232,13 @@ export class RuntimeManager {
             try {
               fs.accessSync(fullPath, fs.constants.X_OK);
             } catch {
-              continue;
+              log.info(`Making binary executable: ${fullPath}`);
+              try {
+                fs.chmodSync(fullPath, 0o755);
+              } catch (e) {
+                log.warn(`Failed to chmod binary: ${fullPath}`, e);
+                continue;
+              }
             }
           }
           return fullPath;
@@ -220,6 +248,24 @@ export class RuntimeManager {
     };
 
     return search(dir);
+  }
+
+  private getSitePackagesPath(venvDir: string): string | null {
+    const isWin = process.platform === "win32";
+    if (isWin) {
+      const p = path.join(venvDir, "Lib", "site-packages");
+      return fs.existsSync(p) ? p : null;
+    }
+    
+    const libDir = path.join(venvDir, "lib");
+    if (!fs.existsSync(libDir)) return null;
+    
+    const pyDirs = fs.readdirSync(libDir).filter(d => d.startsWith("python"));
+    for (const pyDir of pyDirs) {
+      const p = path.join(libDir, pyDir, "site-packages");
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
   }
 
   async setup(): Promise<void> {
@@ -309,16 +355,17 @@ export class RuntimeManager {
       // Manual fix: site-packages might miss the CSV data files
       try {
         const repoDataDir = path.join(packagePath, "munajjam", "data");
-        const sitePackagesBase = path.join(venvDir, "lib", "python3.12", "site-packages", "munajjam", "data");
+        const sitePackagesBase = this.getSitePackagesPath(venvDir);
         
-        if (fs.existsSync(repoDataDir)) {
-          if (!fs.existsSync(sitePackagesBase)) {
-            fs.mkdirSync(sitePackagesBase, { recursive: true });
+        if (repoDataDir && sitePackagesBase && fs.existsSync(repoDataDir)) {
+          const targetDir = path.join(sitePackagesBase, "munajjam", "data");
+          if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
           }
           const dataFiles = fs.readdirSync(repoDataDir);
           for (const file of dataFiles) {
             if (file.endsWith(".csv")) {
-              fs.copyFileSync(path.join(repoDataDir, file), path.join(sitePackagesBase, file));
+              fs.copyFileSync(path.join(repoDataDir, file), path.join(targetDir, file));
               log.info(`Manually synced data file: ${file}`);
             }
           }
@@ -358,8 +405,9 @@ export class RuntimeManager {
       });
 
       if (munajjamOk) {
-        const dataPath = path.join(managedVenvDir(), "lib", "python3.12", "site-packages", "munajjam", "data", "quran_ayat.csv");
-        dataOk = fs.existsSync(dataPath);
+        const sitePackages = this.getSitePackagesPath(managedVenvDir());
+        const dataPath = sitePackages ? path.join(sitePackages, "munajjam", "data", "quran_ayat.csv") : null;
+        dataOk = !!dataPath && fs.existsSync(dataPath);
       }
     }
 
@@ -375,6 +423,8 @@ export class RuntimeManager {
   async getDoctorReport() {
     const venvPython = managedPythonPath();
     const ffmpegPathFile = managedFfmpegPathFile();
+    const pythonDir = path.join(managedRuntimeRoot(), "python_standalone");
+    const standalonePython = await this.findExecutable(pythonDir, "python3") || await this.findExecutable(pythonDir, "python");
     
     const report: any = {
       platform: process.platform,
@@ -382,6 +432,11 @@ export class RuntimeManager {
       python: {
         path: venvPython,
         exists: fs.existsSync(venvPython),
+        version: null,
+      },
+      standalonePython: {
+        path: standalonePython,
+        exists: !!standalonePython && fs.existsSync(standalonePython),
         version: null,
       },
       ffmpeg: {
@@ -402,6 +457,17 @@ export class RuntimeManager {
           child.on("close", () => resolve("unknown"));
         });
         report.python.version = version;
+      } catch {}
+    }
+
+    if (report.standalonePython.exists) {
+      try {
+        const version = await new Promise<string>((resolve) => {
+          const child = spawn(report.standalonePython.path, ["--version"]);
+          child.stdout.on("data", (data) => resolve(data.toString().trim()));
+          child.on("close", () => resolve("unknown"));
+        });
+        report.standalonePython.version = version;
       } catch {}
     }
 
