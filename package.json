@@ -8,8 +8,8 @@
     "build": "tsup src/main.ts src/preload.ts --format cjs --out-dir dist --sourcemap --external electron --external better-sqlite3",
     "watch": "tsup src/main.ts src/preload.ts --format cjs --out-dir dist --sourcemap --watch --external electron --external better-sqlite3",
     "dev": "concurrently -k \"npm:next\" \"npm:watch\" \"npm:electron\"",
-    "next": "NEXT_PUBLIC_MUNAJJAM_DESKTOP=1 MUNAJJAM_NEXT_PORT=${MUNAJJAM_NEXT_PORT:-4937} npm --prefix ./ui run dev -- --port ${MUNAJJAM_NEXT_PORT:-4937}",
-    "electron": "MUNAJJAM_NEXT_PORT=${MUNAJJAM_NEXT_PORT:-4937} MUNAJJAM_DEV_URL=http://localhost:${MUNAJJAM_NEXT_PORT:-4937}/en electron .",
+    "next": "cross-env NEXT_PUBLIC_MUNAJJAM_DESKTOP=1 MUNAJJAM_NEXT_PORT=4937 npm --prefix ./ui run dev -- --port 4937",
+    "electron": "cross-env MUNAJJAM_NEXT_PORT=4937 MUNAJJAM_DEV_URL=http://localhost:4937/en electron .",
     "start": "npm run build && npm run build:ui && electron .",
     "build:ui": "npm --prefix ./ui run build",
     "package": "npm run build && npm run build:ui && electron-builder",
@@ -21,7 +21,7 @@
     "audit:deadcode:ui": "knip --no-progress --no-config-hints --include files,dependencies --directory ui",
     "audit:deadcode": "npm run audit:deadcode:main && npm run audit:deadcode:ui",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "clean:generated": "rm -rf dist .next coverage ui/.next ui/out ui/.vercel ui/public/peaks ui/tsconfig.tsbuildinfo"
+    "clean:generated": "rimraf dist .next coverage ui/.next ui/out ui/.vercel ui/public/peaks ui/tsconfig.tsbuildinfo"
   },
   "description": "Automated Quran Recitation Synchronization",
   "author": "Munajjam",
@@ -86,11 +86,13 @@
     "@typescript-eslint/eslint-plugin": "^8.46.1",
     "@typescript-eslint/parser": "^8.46.1",
     "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
     "electron": "^32.2.0",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
     "knip": "^5.85.0",
+    "rimraf": "^6.1.3",
     "tsup": "^8.2.4",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
