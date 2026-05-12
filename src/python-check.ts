@@ -1,14 +1,10 @@
-import { spawn, execFileSync } from "child_process";
+import { spawn } from "child_process";
 import fs from "fs";
-import path from "path";
 import { BrowserWindow } from "electron";
 import { inspectPythonRuntime } from "./python-runtime";
 import {
   installerScriptPath,
   managedLogsDir,
-  managedPythonPath,
-  managedRepoRoot,
-  managedPackageDir,
   managedRuntimeRoot,
 } from "./paths";
 import { createLogger } from "./logger";
@@ -16,7 +12,7 @@ import type { EnvCheckResult, EnvInstallProgress } from "./ipc-types";
 
 const log = createLogger("python-check");
 
-const MUNAJJAM_REPO_URL = "https://github.com/Itqan-community/Munajjam.git";
+const MUNAJJAM_REPO_URL = "https://github.com/Itqan-community/Munajjam";
 const MUNAJJAM_REPO_REF = "main";
 const PYTHON_VERSION = "3.12";
 
@@ -76,71 +72,8 @@ export function resolveInstallerInvocation(
   return null;
 }
 
-/**
- * If a managed runtime is already installed (repo cloned + venv created),
- * pull the latest code from the repo and reinstall the package so the user
- * always has the most recent version without needing to click "Install" again.
- *
- * This runs silently during the environment check.  Failures are logged but
- * never block the check itself — a stale-but-working runtime is better than
- * a broken startup.
- */
-export async function updateManagedRuntime(): Promise<void> {
-  const repoDir = managedRepoRoot();
-  const packageDir = managedPackageDir();
-  const pythonBin = managedPythonPath();
-
-  // Only attempt an update when a full managed install already exists.
-  if (
-    !fs.existsSync(path.join(repoDir, ".git")) ||
-    !fs.existsSync(pythonBin)
-  ) {
-    log.debug("Managed runtime not fully installed — skipping auto-update");
-    return;
-  }
-
-  log.info("Updating managed Munajjam runtime...");
-
-  try {
-    // 1. Pull latest code
-    execFileSync("git", ["-C", repoDir, "fetch", "origin", MUNAJJAM_REPO_REF, "--depth", "1"], {
-      timeout: 30_000,
-      stdio: "pipe",
-    });
-    execFileSync("git", ["-C", repoDir, "checkout", MUNAJJAM_REPO_REF], {
-      timeout: 10_000,
-      stdio: "pipe",
-    });
-    execFileSync("git", ["-C", repoDir, "reset", "--hard", `origin/${MUNAJJAM_REPO_REF}`], {
-      timeout: 10_000,
-      stdio: "pipe",
-    });
-    log.info("Git pull completed");
-  } catch (err) {
-    log.warn("Git pull failed during auto-update (continuing with existing code)", {
-      error: String(err),
-    });
-    // Don't abort — the existing code may still work fine.
-  }
-
-  try {
-    // 2. Reinstall the package
-    execFileSync(pythonBin, ["-m", "pip", "install", "--quiet", `${packageDir}[faster-whisper]`], {
-      timeout: 120_000,
-      stdio: "pipe",
-      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
-    });
-    log.info("pip install completed");
-  } catch (err) {
-    log.warn("pip install failed during auto-update", { error: String(err) });
-  }
-}
-
 export async function checkEnvironment(): Promise<EnvCheckResult> {
   log.info("Starting environment check", { platform: process.platform });
-
-  // Silently update the managed runtime before inspecting it
-  await updateManagedRuntime();
 
   const runtime = await inspectPythonRuntime();
 
@@ -179,6 +112,24 @@ function broadcastInstallProgress(progress: EnvInstallProgress) {
   }
 }
 
+function installerEnvironment(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const overrideKeys = [
+    "MUNAJJAM_ALIGN_MODULE",
+    "MUNAJJAM_ALIGN_SCRIPT",
+    "MUNAJJAM_DEV_URL",
+    "MUNAJJAM_PYTHON",
+    "MUNAJJAM_REPO_ROOT",
+    "MUNAJJAM_UI_DIR",
+  ];
+
+  for (const key of overrideKeys) {
+    delete env[key];
+  }
+
+  return { ...env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" };
+}
+
 export async function installRuntime(): Promise<number> {
   const scriptPath = installerScriptPath();
   const rootPath = managedRuntimeRoot();
@@ -207,7 +158,7 @@ export async function installRuntime(): Promise<number> {
 
   return new Promise((resolve) => {
     const child = spawn(invocation.command, invocation.args, {
-      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
+      env: installerEnvironment(),
     });
 
     child.stdout.on("data", (chunk) => {
