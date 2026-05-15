@@ -13,28 +13,8 @@ import { createLogger } from "./logger";
 
 const log = createLogger("runtime-manager");
 
-export type RuntimeStage = 
-  | "idle"
-  | "checking"
-  | "downloading_python"
-  | "extracting_python"
-  | "downloading_ffmpeg"
-  | "extracting_ffmpeg"
-  | "creating_venv"
-  | "downloading_repo"
-  | "extracting_repo"
-  | "installing_requirements"
-  | "verifying"
-  | "ready"
-  | "doctor"
-  | "error";
-
-export interface RuntimeStatus {
-  stage: RuntimeStage;
-  progress: number; // 0 to 100
-  message: string;
-  error?: string;
-}
+import { RuntimeStage, RuntimeStatus } from "./ipc-types";
+export { RuntimeStage, RuntimeStatus };
 
 export class RuntimeManager {
   private status: RuntimeStatus = {
@@ -109,11 +89,35 @@ export class RuntimeManager {
     }
     stream.end();
     return new Promise((resolve, reject) => {
-      stream.on("finish", resolve);
+      stream.on("finish", () => resolve(undefined));
       stream.on("error", reject);
     });
   }
 
+
+  private async runCommand(command: string, args: string[], stage: RuntimeStage, message: string): Promise<void> {
+    this.updateStatus({ stage, progress: 0, message });
+    return new Promise((resolve, reject) => {
+      log.info(`Running command: ${command} ${args.join(" ")}`);
+      const child = spawn(command, args, { shell: true });
+      
+      child.stdout?.on("data", (data) => {
+        const line = data.toString().trim();
+        if (line) this.updateStatus({ message: line });
+      });
+
+      child.stderr?.on("data", (data) => {
+        const line = data.toString().trim();
+        if (line) log.warn(`${command} stderr: ${line}`);
+      });
+
+      child.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`${command} failed with code ${code}`));
+      });
+      child.on("error", reject);
+    });
+  }
 
   private async extractArchive(archivePath: string, destDir: string) {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
@@ -273,6 +277,52 @@ export class RuntimeManager {
       const root = managedRuntimeRoot();
       if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
 
+      // 0. Optional: External dependencies (winget on Windows)
+      let standalonePython: string | null = null;
+      let ffmpegBinPath: string | null = null;
+
+      if (process.platform === "win32") {
+        const hasWinget = await new Promise<boolean>((resolve) => {
+          const child = spawn("winget", ["--version"]);
+          child.on("close", (code) => resolve(code === 0));
+          child.on("error", () => resolve(false));
+        });
+
+        if (hasWinget) {
+          try {
+            await this.runCommand(
+              "winget", 
+              ["install", "--exact", "--id", "Python.Python.3.12", "--accept-package-agreements", "--accept-source-agreements"], 
+              "installing_dependencies", 
+              "Installing Python 3.12 via winget..."
+            );
+            await this.runCommand(
+              "winget", 
+              ["install", "--exact", "--id", "Gyan.FFmpeg", "--accept-package-agreements", "--accept-source-agreements"], 
+              "installing_dependencies", 
+              "Installing FFmpeg via winget..."
+            );
+            
+            // Try to find them after winget install in common locations
+            const wingetPythonPath = path.join(process.env.LOCALAPPDATA || "", "Programs", "Python", "Python312");
+            const wingetPackagePath = path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Packages");
+            
+            standalonePython = (await this.findExecutable(wingetPythonPath, "python.exe")) || 
+                               (await this.findExecutable(wingetPackagePath, "python.exe"));
+            
+            if (!standalonePython) {
+              standalonePython = await this.findExecutable(process.env.LOCALAPPDATA || "", "python.exe"); 
+            }
+            // Note: winget usually puts things in PATH, but finding them explicitly is safer
+            // or we just trust that 'python' or 'py -3.12' will work now.
+            // For now, we'll still prefer the standalone download if we can't find the winget one easily,
+            // or just use 'python' if it works.
+          } catch (e) {
+            log.warn("Winget installation failed, falling back to standalone download", e);
+          }
+        }
+      }
+
       const links = this.getBinaryLinks();
       if (!links.python || !links.ffmpeg) {
         throw new Error(`Platform ${process.platform} ${process.arch} is not yet supported for automated setup.`);
@@ -280,7 +330,7 @@ export class RuntimeManager {
 
       // 1. Python
       const pythonDir = path.join(root, "python_standalone");
-      if (!fs.existsSync(pythonDir)) {
+      if (!standalonePython && !fs.existsSync(pythonDir)) {
         const pythonArchive = path.join(root, "python.tar.gz");
         await this.downloadFile(links.python, pythonArchive, "downloading_python");
         
@@ -289,24 +339,55 @@ export class RuntimeManager {
         fs.unlinkSync(pythonArchive);
       }
       
-      const standalonePython = await this.findExecutable(pythonDir, "python3") || await this.findExecutable(pythonDir, "python");
-      if (!standalonePython) throw new Error("Could not find Python executable in extracted archive");
+      if (!standalonePython) {
+        standalonePython = await this.findExecutable(pythonDir, "python3") || await this.findExecutable(pythonDir, "python");
+      }
+      
+      if (!standalonePython) {
+        // Final fallback: try system python if winget/standalone failed
+        standalonePython = await new Promise<string | null>((resolve) => {
+          const child = spawn("python", ["-c", "import sys; print(sys.executable)"]);
+          let output = "";
+          child.stdout.on("data", (data) => output += data.toString());
+          child.on("close", (code) => resolve(code === 0 ? output.trim() : null));
+          child.on("error", () => resolve(null));
+        });
+      }
+
+      if (!standalonePython) throw new Error("Could not find Python executable");
 
       // 2. FFmpeg
       const ffmpegDir = path.join(root, "ffmpeg_standalone");
       const ffmpegPathFile = managedFfmpegPathFile();
       if (!fs.existsSync(ffmpegPathFile)) {
-        const ffmpegArchive = path.join(root, "ffmpeg.archive");
-        await this.downloadFile(links.ffmpeg, ffmpegArchive, "downloading_ffmpeg");
-        
-        this.updateStatus({ stage: "extracting_ffmpeg", progress: 0, message: "Extracting FFmpeg..." });
-        await this.extractArchive(ffmpegArchive, ffmpegDir);
-        
-        const ffmpegBinPath = await this.findExecutable(ffmpegDir, "ffmpeg");
-        if (!ffmpegBinPath) throw new Error("Could not find FFmpeg executable in extracted archive");
-        
+        // Try to find system ffmpeg first (e.g. from winget)
+        ffmpegBinPath = await new Promise<string | null>((resolve) => {
+          const locator = process.platform === "win32" ? "where" : "which";
+          const child = spawn(locator, ["ffmpeg"]);
+          let output = "";
+          child.stdout.on("data", (data) => output += data.toString());
+          child.on("close", (code) => {
+            if (code === 0) {
+              const lines = output.split(/\r?\n/).filter(l => l.trim().length > 0);
+              resolve(lines[0]);
+            } else resolve(null);
+          });
+          child.on("error", () => resolve(null));
+        });
+
+        if (!ffmpegBinPath) {
+          const ffmpegArchive = path.join(root, "ffmpeg.archive");
+          await this.downloadFile(links.ffmpeg, ffmpegArchive, "downloading_ffmpeg");
+          
+          this.updateStatus({ stage: "extracting_ffmpeg", progress: 0, message: "Extracting FFmpeg..." });
+          await this.extractArchive(ffmpegArchive, ffmpegDir);
+          
+          ffmpegBinPath = await this.findExecutable(ffmpegDir, "ffmpeg");
+          fs.unlinkSync(ffmpegArchive);
+        }
+
+        if (!ffmpegBinPath) throw new Error("Could not find FFmpeg executable");
         fs.writeFileSync(ffmpegPathFile, ffmpegBinPath);
-        fs.unlinkSync(ffmpegArchive);
       }
 
       // 3. Repository

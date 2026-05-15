@@ -151,6 +151,7 @@ export interface JobConfig {
 export type RuntimeStage = 
   | "idle"
   | "checking"
+  | "installing_dependencies"
   | "downloading_python"
   | "extracting_python"
   | "downloading_ffmpeg"
@@ -161,6 +162,7 @@ export type RuntimeStage =
   | "installing_requirements"
   | "verifying"
   | "ready"
+  | "doctor"
   | "error";
 
 export interface RuntimeStatus {
@@ -241,4 +243,28 @@ export interface MunajjamBridge {
     doctor: () => Promise<any>;
     subscribe: (callback: (status: RuntimeStatus) => void) => () => void;
   };
+}
+
+export interface EnvCheckResult {
+  python: boolean;
+  pythonVersion: string | null;
+  pythonPath: string | null;
+  pip: boolean;
+  ffmpeg: boolean;
+  ffmpegPath: string | null;
+  munajjam: boolean;
+  munajjamVersion: string | null;
+  platform: string;
+  platformSupported: boolean;
+  packageManagerAvailable: boolean;
+  packageManagerName: string | null;
+  managedInstallPath: string | null;
+  localPackageAvailable: boolean;
+  localPackagePath: string | null;
+}
+
+export interface EnvInstallProgress {
+  type: "stdout" | "stderr" | "exit";
+  data: string;
+  exitCode?: number;
 }
